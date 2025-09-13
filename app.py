@@ -277,14 +277,14 @@ if selected == _("Crop Recommendation"):
     humidity = st.number_input(_("Humidity (%)"), min_value=0.0, max_value=100.0, value=0.0)
     rainfall = st.number_input(_("Rainfall (mm)"), min_value=0.0, value=0.0)
     
-    if st.button(_("Recommend Crop")):
-        crop_input = np.array([[N, P, K, pH, temperature, humidity, rainfall]])
+    # if st.button(_("Recommend Crop")):
+    #     crop_input = np.array([[N, P, K, pH, temperature, humidity, rainfall]])
         
-        if all(crop_input[0][:3]):  # Check if N, P, K values are provided
-            crop_recommendation = crop_recom_model.predict(crop_input)
-            st.success(_(f"Recommended Crop: {crop_recommendation[0]}"))
-        else:
-            st.error(_("Please enter values for Nitrogen (N), Phosphorus (P), and Potassium (K)"))
+    #     if all(crop_input[0][:3]):  # Check if N, P, K values are provided
+    #         crop_recommendation = crop_recom_model.predict(crop_input)
+    #         st.success(_(f"Recommended Crop: {crop_recommendation[0]}"))
+    #     else:
+    #         st.error(_("Please enter values for Nitrogen (N), Phosphorus (P), and Potassium (K)"))
 
 # Crop Yield Prediction
 elif selected == _("Crop Yield Prediction"):
