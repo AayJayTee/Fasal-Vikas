@@ -383,25 +383,25 @@ elif selected == _("Meet the Creators"):
             "name": "Yati",
             "linkedin": "https://www.linkedin.com/in/yati21/",
             "github": "https://github.com/Yati-21",
-            "image": "images/aaron.jpg"
+            "image": "images/yati.jpg"
         },
         {
             "name": "Ananya Gupta",
             "linkedin": "https://www.linkedin.com/in/ananya-gupta-513753258/",
             "github": "https://github.com/Ananyagupta1812",
-            "image": "images/aaron.jpg"
+            "image": "images/ananya.jpg"
         },
         {
             "name": "Chirag Dhooria",
             "linkedin": "https://www.linkedin.com/in/chirag-dhooria-324859305/",
-            "github": "",
-            "image": "images/aaron.jpg"
+            "github": "https://github.com/Chirag-Dhooria",
+            "image": "images/randompfp.jpeg"
         },
         {
             "name": "Aanya Chauhan",
-            "linkedin": "",
+            "linkedin": "https://www.linkedin.com/in/aanyachauhan9/",
             "github": "",
-            "image": "images/aaron.jpg"
+            "image": "images/randompfp.jpeg"
         }
     ]
 
