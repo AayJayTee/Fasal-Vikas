@@ -386,8 +386,8 @@ elif selected == _("Meet the Creators"):
         {
             "name": "Aanya Chauhan",
             "linkedin": "https://www.linkedin.com/in/aanyachauhan9/",
-            "github": "",
-            "image": "images/randompfp.jpeg"
+            "github": "https://github.com/aanyachauhan9",
+            "image": "images/aanya.jpg"
         }
     ]
 
