@@ -6,65 +6,51 @@ import joblib
 import pandas as pd
 from streamlit_option_menu import option_menu
 
-#To add translation feature (send request to LibreTranslate server)
-import requests
+import os
+from google.cloud import translate_v2
+from dotenv import load_dotenv
+load_dotenv()
 
-LIBRE_URL = "https://libretranslate.de/translate"  # You can also self-host or use another instance
+translate_client = translate_v2.Client()
 
-
-# Supported languages for dropdown (code: display name)
 LANGUAGES = {
     "en": "English",
     "hi": "Hindi",
-    "or": "Odia",
-    "bn": "Bengali",
-    "ta": "Tamil",
-    "te": "Telugu",
-    "mr": "Marathi",
-    "gu": "Gujarati",
-    "kn": "Kannada",
-    "pa": "Punjabi"
 }
 
-# Session state for language
 if "language" not in st.session_state:
     st.session_state.language = "en"
 
-def translate_text(text, dest):
-    if dest == "en":  # Skip if English
+def _(text):
+    lang = st.session_state.language
+    if lang == "en":
         return text
     try:
-        response = requests.post(
-            LIBRE_URL,
-            data={
-                "q": text,
-                "source": "en",     # your base language
-                "target": dest,
-                "format": "text"
-            }
-        )
-        if response.status_code == 200:
-            return response.json()["translatedText"]
-        else:
-            return text  # fallback
+        result = translate_client.translate(text, target_language=lang)
+        return result["translatedText"]
     except Exception:
         return text
 
-# Language selection dropdown at the top right
-col1, col2 = st.columns([8, 1])
-with col2:
-    selected_lang = st.selectbox(
-        "🌐",
-        options=list(LANGUAGES.keys()),
-        format_func=lambda x: LANGUAGES[x],
-        index=list(LANGUAGES.keys()).index(st.session_state.language),
-        key="language_select"
-    )
-    st.session_state.language = selected_lang
+lang_display = st.sidebar.selectbox(
+    "🌐 " + _("Select Language"),
+    options=list(LANGUAGES.keys()),
+    format_func=lambda x: LANGUAGES[x],
+    index=list(LANGUAGES.keys()).index(st.session_state.language),
+)
+if st.session_state.language != lang_display:
+    st.session_state.language = lang_display
+    st.rerun()
 
-def _(text):
-    """Translate text to selected language."""
-    return translate_text(text, st.session_state.language)
+def translate_markdown(md_text):
+    lines = md_text.split('\n')
+    translated_lines = []
+    for line in lines:
+        # Only translate if the line is not empty
+        if line.strip():
+            translated_lines.append(_(line))
+        else:
+            translated_lines.append('')
+    return '\n'.join(translated_lines)
 
 st.set_page_config(
     page_title=_("Fasal Vikas"),
@@ -290,7 +276,7 @@ if selected == _("Crop Recommendation"):
 elif selected == _("Crop Yield Prediction"):
     st.title(_("Crop Yield Prediction"))
     st.write("")
-    st.markdown(_("""
+    st.markdown(translate_markdown("""
 ### Using the Crop Yield Prediction Model
 
 - **Select State**: Choose the state where the crop is being cultivated.
@@ -412,7 +398,7 @@ elif selected == _("Meet the Creators"):
             with cols[i]:
                 st.image(creator["image"], width=80, caption=None, use_container_width=True, output_format='auto')
                 st.markdown(
-                    f"<div class='profile-column'><p class='profile-name'>{_(creator['name'])}</p>"
+                    f"<div class='profile-column'><p class='profile-name'>{(creator['name'])}</p>"
                     f"<a href='{creator['linkedin']}'><img src='https://upload.wikimedia.org/wikipedia/commons/8/81/LinkedIn_icon.svg' class='icon'></a> "
                     f"<a href='{creator['github']}'><img src='https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png' class='icon'></a></div>",
                     unsafe_allow_html=True
