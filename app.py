@@ -5,6 +5,7 @@ import os
 import joblib
 import pandas as pd
 from streamlit_option_menu import option_menu
+import re
 
 import os
 from google.cloud import translate_v2
@@ -16,20 +17,141 @@ translate_client = translate_v2.Client()
 LANGUAGES = {
     "en": "English",
     "hi": "Hindi",
+    "or": "Odia"
 }
 
 if "language" not in st.session_state:
     st.session_state.language = "en"
 
+# Add caching for translations
+if "translation_cache" not in st.session_state:
+    st.session_state.translation_cache = {}
+
 def _(text):
     lang = st.session_state.language
     if lang == "en":
         return text
+    
+    # Check cache first
+    cache_key = f"{lang}_{text}"
+    if cache_key in st.session_state.translation_cache:
+        return st.session_state.translation_cache[cache_key]
+    
     try:
         result = translate_client.translate(text, target_language=lang)
-        return result["translatedText"]
+        translated = result["translatedText"]
+        # Cache the result
+        st.session_state.translation_cache[cache_key] = translated
+        return translated
     except Exception:
         return text
+
+# Move smart translation functions to global scope
+def categorize_text(text):
+    """Categorize text to determine best translation approach"""
+    if re.match(r'^[A-Z][a-z]+ Pradesh$', text):
+        return "state"
+    elif text in ['Andaman and Nicobar Islands', 'Dadra and Nagar Haveli', 'Jammu and Kashmir']:
+        return "territory"
+    elif text.endswith('nuts') or text.endswith('gram') or 'pepper' in text.lower() or text in ['Horsegram']:
+        return "compound_crop"
+    elif text in ['Kharif', 'Rabi']:
+        return "season_hindi"
+    elif text in ['Gujarat', 'Karnataka', 'Punjab', 'Haryana', 'Kerala', 'Tamil Nadu', 'Telangana', 'Maharashtra', 'Rajasthan']:
+        return "state"
+    else:
+        return "general"
+
+def smart_translate_by_category(text):
+    """Translate based on text category with caching"""
+    lang = st.session_state.language
+    if lang == "en":
+        return text
+    
+    # Check cache first
+    cache_key = f"smart_{lang}_{text}"
+    if cache_key in st.session_state.translation_cache:
+        return st.session_state.translation_cache[cache_key]
+    
+    category = categorize_text(text)
+    
+    try:
+        if category == "state":
+            result = translate_client.translate(f"the state of {text}", target_language=lang)
+            translated = result["translatedText"]
+            state_prefix_result = translate_client.translate("the state of", target_language=lang)
+            state_prefix = state_prefix_result["translatedText"]
+            translated = translated.replace(state_prefix, "").strip()
+            
+        elif category == "territory":
+            if text == "Dadra and Nagar Haveli":
+                territory_result = translate_client.translate("Dadra and Nagar Haveli union territory", target_language=lang)
+                union_result = translate_client.translate("union territory", target_language=lang)
+                translated = territory_result["translatedText"].replace(union_result["translatedText"], "").strip()
+            else:
+                result = translate_client.translate(text, target_language=lang)
+                translated = result["translatedText"]
+            
+        elif category == "compound_crop":
+            if text == "Soyabean":
+                result = translate_client.translate("Soybean", target_language=lang)
+                translated = result["translatedText"]
+            elif text == "Blackpepper":
+                black_result = translate_client.translate("Black", target_language=lang)
+                pepper_result = translate_client.translate("Pepper", target_language=lang)
+                translated = f"{black_result['translatedText']} {pepper_result['translatedText']}"
+            elif text == "Cashewnuts":
+                result = translate_client.translate("Cashew nuts", target_language=lang)
+                translated = result["translatedText"]
+            elif text == "Ladyfinger":
+                result = translate_client.translate("Okra", target_language=lang)
+                translated = result["translatedText"]
+            elif text == "Sweetpotato":
+                result = translate_client.translate("Sweet Potato", target_language=lang)
+                translated = result["translatedText"]
+            elif text == "Horsegram":
+                result = translate_client.translate("Horse gram", target_language=lang)
+                translated = result["translatedText"]
+            else:
+                result = translate_client.translate(text, target_language=lang)
+                translated = result["translatedText"]
+        
+        elif category == "season_hindi":
+            result = translate_client.translate(text, target_language=lang)
+            translated = result["translatedText"]
+        
+        else:
+            result = translate_client.translate(text, target_language=lang)
+            translated = result["translatedText"]
+        
+        # Cache the result
+        st.session_state.translation_cache[cache_key] = translated
+        return translated
+            
+    except Exception as e:
+        print(f"Translation error for '{text}': {e}")
+        return text
+
+def translate_list_smart(items):
+    """Translate a list of items using smart translation"""
+    return [smart_translate_by_category(item) for item in items]
+
+# Add a simpler approach for dropdown translations
+@st.cache_data
+def get_translated_options(items, lang):
+    """Cache translated dropdown options"""
+    if lang == "en":
+        return items
+    
+    translated = []
+    for item in items:
+        try:
+            # Use simple translation for dropdown options
+            result = translate_client.translate(item, target_language=lang)
+            translated.append(result["translatedText"])
+        except:
+            translated.append(item)
+    return translated
 
 lang_display = st.sidebar.selectbox(
     "🌐 " + _("Select Language"),
@@ -45,12 +167,23 @@ def translate_markdown(md_text):
     lines = md_text.split('\n')
     translated_lines = []
     for line in lines:
-        # Only translate if the line is not empty
         if line.strip():
             translated_lines.append(_(line))
         else:
             translated_lines.append('')
     return '\n'.join(translated_lines)
+
+def translate_list(items):
+    """Translate a list of items"""
+    return [_(item) for item in items]
+
+def get_original_value(translated_value, original_list, translated_list):
+    """Get the original English value from translated value"""
+    try:
+        index = translated_list.index(translated_value)
+        return original_list[index]
+    except ValueError:
+        return translated_value
 
 st.set_page_config(
     page_title=_("Fasal Vikas"),
@@ -196,8 +329,7 @@ def get_yield_recommendations(crop, area, season, pH, rainfall, temperature, pro
 # Loading all the models
 working_dir = os.path.dirname(os.path.abspath(__file__))
 crop_recom_model = pickle.load(open(f'{working_dir}/RF_Crop.sav', 'rb'))
-crop_yield_model =joblib.load(open(f'{working_dir}/voting_yield.sav', 'rb'))
-
+crop_yield_model = joblib.load(open(f'{working_dir}/voting_yield.sav', 'rb'))
 
 # Set background color
 st.markdown(
@@ -233,15 +365,27 @@ st.markdown(
 )
 
 with st.sidebar:
-    options = [_("Home"), _("Crop Yield Prediction"), _("Crop Recommendation"), _("Meet the Creators")]
-    selected = option_menu(_("Fasal Vikas"),
-                           options,
+    # Store original options in English
+    original_options = ["Home", "Crop Yield Prediction", "Crop Recommendation", "Meet the Creators"]
+    
+    # Translate options for display
+    translated_options = [_(option) for option in original_options]
+    
+    selected_translated = option_menu(_("Fasal Vikas"),
+                           translated_options,
                            menu_icon=":seedling:",
                            icons=["house", "tree", "tree", "people"],
                            default_index=0)
+    
+    # Get the original English option for comparison
+    try:
+        selected_index = translated_options.index(selected_translated)
+        selected = original_options[selected_index]
+    except ValueError:
+        selected = "Home"  # fallback
 
 # Crop Recommendation
-if selected == _("Crop Recommendation"):
+if selected == "Crop Recommendation":
     st.title(_("Crop Recommendation"))
 
     st.write(_("Provide the following information to get crop recommendations:"))
@@ -263,17 +407,17 @@ if selected == _("Crop Recommendation"):
     humidity = st.number_input(_("Humidity (%)"), min_value=0.0, max_value=100.0, value=0.0)
     rainfall = st.number_input(_("Rainfall (mm)"), min_value=0.0, value=0.0)
     
-    # if st.button(_("Recommend Crop")):
-    #     crop_input = np.array([[N, P, K, pH, temperature, humidity, rainfall]])
+    if st.button(_("Recommend Crop")):
+        crop_input = np.array([[N, P, K, pH, temperature, humidity, rainfall]])
         
-    #     if all(crop_input[0][:3]):  # Check if N, P, K values are provided
-    #         crop_recommendation = crop_recom_model.predict(crop_input)
-    #         st.success(_(f"Recommended Crop: {crop_recommendation[0]}"))
-    #     else:
-    #         st.error(_("Please enter values for Nitrogen (N), Phosphorus (P), and Potassium (K)"))
+        if all(crop_input[0][:3]):  # Check if N, P, K values are provided
+            crop_recommendation = crop_recom_model.predict(crop_input)
+            st.success(_(f"Recommended Crop: {crop_recommendation[0]}"))
+        else:
+            st.error(_("Please enter values for Nitrogen (N), Phosphorus (P), and Potassium (K)"))
 
 # Crop Yield Prediction
-elif selected == _("Crop Yield Prediction"):
+elif selected == "Crop Yield Prediction":
     st.title(_("Crop Yield Prediction"))
     st.write("")
     st.markdown(translate_markdown("""
@@ -310,9 +454,22 @@ Leverage machine learning for accurate crop yield predictions to enhance product
 
     seasons = ['Kharif', 'Rabi', 'Summer', 'Whole Year']
 
-    state = st.selectbox(_("Select State"), states)
-    crop = st.selectbox(_("Select Crop"), crops)
-    season = st.selectbox(_("Select Season"), seasons)
+    # Use cached translation for better performance
+    current_lang = st.session_state.language
+    translated_states = get_translated_options(states, current_lang)
+    translated_crops = get_translated_options(crops, current_lang)
+    translated_seasons = get_translated_options(seasons, current_lang)
+
+    # Display translated options but get original values
+    state_translated = st.selectbox(_("Select State"), translated_states)
+    crop_translated = st.selectbox(_("Select Crop"), translated_crops)
+    season_translated = st.selectbox(_("Select Season"), translated_seasons)
+        
+    # Get original English values for processing
+    state = get_original_value(state_translated, states, translated_states)
+    crop = get_original_value(crop_translated, crops, translated_crops)
+    season = get_original_value(season_translated, seasons, translated_seasons)
+
     pH = st.number_input(_("Soil pH Value"), min_value=0.0, max_value=14.0, value=0.0)
     rainfall = st.number_input(_("Rainfall (mm)"), min_value=0.0, value=0.0)
     temperature = st.number_input(_("Temperature (°C)"), min_value=0.0, value=0.0)
@@ -347,12 +504,11 @@ Leverage machine learning for accurate crop yield predictions to enhance product
             st.error(_("Please enter all required values"))
 
 # Meet Creators
-elif selected == _("Meet the Creators"):
+elif selected == "Meet the Creators":
     st.title(_("Meet the Creators"))
-    st.markdown("<br>", unsafe_allow_html=True)  # Adding space between the title and the profiles
+    st.markdown("<br>", unsafe_allow_html=True)
 
     creators = [
-        
         {
             "name": "Aaron Thomas",
             "linkedin": "https://www.linkedin.com/in/aaron-jthomas/",
@@ -411,8 +567,8 @@ else:
     st.write(_("##### Welcome to Fasal Vikas! Explore our tools in the sidebar to make informed agricultural decisions."))
     st.image(img, width=750)
     
-    st.write("")  # Leave some space after the image
-    st.write(_("### Overview"))  # Section title for introduction
+    st.write("")
+    st.write(_("### Overview"))
     st.write(_("Fasal Vikas is an AI-powered platform designed to empower farmers with personalized crop recommendations and accurate yield predictions. By leveraging advanced machine learning models and real-time data, it helps optimize irrigation, fertilization, and pest management. The intuitive interface and actionable insights enable farmers to boost productivity, make informed decisions, and sustainably manage their agricultural practices."))
     st.write(_("### Find the Code at:"))
     st.write(_("Link: "))
